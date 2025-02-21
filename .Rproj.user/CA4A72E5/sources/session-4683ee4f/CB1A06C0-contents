@@ -1,0 +1,220 @@
+---
+title: 'Penalized regression, logistic regression, and classification'
+author: "Tom Ben-Shahar"
+date: "February 22, 2025"
+output: pdf_document
+---
+
+```{r}
+# Load Packages
+pacman::p_load(tidyverse, tidymodels, magrittr, skimr, glmnet)
+
+# Load Data
+election <- read.csv("data/election.csv")
+
+# Clean Data
+election %<>% mutate(
+  i_republican_2016_f = factor(i_republican_2016),
+  i_republican_2012 = factor(i_republican_2012)
+)
+
+# Set Constants
+set.seed(93284298)
+nfold = 5
+lambdas = 10^seq(from = 5, to = -2, length = 1e3)
+alphas = seq(from = 0, to = 1, by = 0.05)
+```
+
+## Data Overview
+
+### Create some nice plots of the raw data and brief discussion
+
+```{r}
+
+
+# Percent of Republican Votes by State
+fig_1_df <- election %>% 
+  group_by(state) %>% 
+  summarise(
+    pct_r_counties = mean(i_republican_2016),
+    tot_votes_r = sum(n_votes_republican_2012),
+    tot_votes = sum(n_votes_total_2012)
+  ) %>% 
+  mutate(
+    pct_r_votes = tot_votes_r / tot_votes
+  )
+
+long_df <- fig_1_df %>% 
+  pivot_longer(cols = c(pct_r_votes, pct_r_counties), 
+               names_to = "Variable", 
+               values_to = "Value")
+
+# Create the bar chart
+ggplot(long_df, aes(x = state, y = Value, fill = Variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Percent of R. Votes and R. Maj. Counties by State",
+       x = "State",
+       y = "Percent of Total",
+       fill = "Variable") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 8)) +
+  scale_fill_manual(values = c("pct_r_counties" = "#25d", "pct_r_votes" = "#d46"),
+                    labels = c("Percentage of Republican Counties", "Percentage of Republican Votes"))
+```
+
+What I find interesting about this visualization is that the proportion of republican-majority counties is consistently larger than the proportion of republican votes, indicating that republican votes may be disproportionately represented. In other words, republicans seem to be winning more counties than they "should" given their voting population. Given the American democratic system, this is expected.
+
+```{r}
+# Plot population vs. pct of r votes
+election %<>% mutate(
+  pct_r_votes = n_votes_republican_2012 / n_votes_total_2012
+)
+
+ggplot(data = election, aes(x = log(pop), y = log(pct_r_votes))) +
+  geom_point()+
+  geom_smooth(method='lm') +
+  labs(
+    title = "Log Population vs. Log Percent of R. Votes",
+    x = "Log Population",
+    y = "Log Percent of Republican Votes"
+  ) +
+  theme_minimal()
+```
+
+This shows a weakly negative relationship between population and republican votes, suggesting more populous areas are more likely democratic-aligned. This is expected.
+
+##
+
+## Penalized Regression
+
+### Using 5-fold cross validation, tune a Lasso model
+
+```{r warning=FALSE}
+
+# Recipe
+rec_1 <- recipe(data = election, i_republican_2016 ~ .) %>% 
+  update_role(fips, new_role = "id") %>% 
+  step_novel(county, state) %>% 
+  step_dummy(i_republican_2016_f, i_republican_2012, county, state) %>% 
+  step_normalize(all_numeric_predictors()) 
+
+# Model : Lasso
+mod_lasso <- linear_reg(penalty = tune(),mixture = 1) %>% 
+  set_engine("glmnet")
+
+# Workflow
+wkfl_lasso <- workflow() %>% 
+  add_model(mod_lasso) %>% 
+  add_recipe(rec_1)
+
+# Cross Validate
+elec_cv <- election %>% vfold_cv(v = nfold)
+
+cv_lasso <- wkfl_lasso %>% 
+  tune_grid(
+    elec_cv,
+    grid = data.frame(penalty = lambdas),
+    metrics = metric_set(rmse)
+  )
+
+# Find optimal penalty
+
+cv_lasso %>% show_best()
+
+# Tune elasticnet prediction model
+
+```
+
+#### Highest Performing Lambda:
+
+$$\lambda = 0.01$$
+
+#### Which metric was used?
+
+RMSE was the metric used. This is not a very fitting choice, as this is a classification regression. Instead, minimizing Gini or Entropy would be preferable.
+
+### Tune an Elasticnet model
+
+```{r warning=FALSE}
+# Elasticnet Model
+mod_ent <- linear_reg( 
+  penalty = tune(), mixture = tune()
+) %>% 
+  set_engine(
+    "glmnet"
+  )
+
+# Workflow
+wkfl_ent <- workflow() %>% 
+  add_model(mod_ent) %>% 
+  add_recipe(rec_1)
+
+# Cross validating alphas and lambdas
+cv_ent <- wkfl_ent %>% 
+  tune_grid(
+    elec_cv,
+    grid = expand_grid(mixture = alphas, penalty = lambdas),
+    metrics = metric_set(rmse)
+  )
+
+cv_ent %>% show_best()
+```
+
+#### Highest Performing Lambda and Alpha:
+
+$$\lambda = 0.01,\text{   } \alpha = 1.00$$
+
+The algorithm tuned $\alpha$ to 1, indicating that a Lasso regression dominates Ridge in this setting.
+
+## 
+
+##Logistic Regression
+
+### Use 5-fold cross validation to tune a logistic regression model
+```{r}
+mod_log <- logistic_reg(
+  penalty = tune(),
+  mixture = tune()
+) %>% 
+  set_engine("glmnet")
+
+# Recipe
+rec_2 <- recipe(data = election, i_republican_2016_f ~ .) %>% 
+  update_role(fips, new_role = "id") %>% 
+  step_novel(county, state) %>% 
+  step_dummy(i_republican_2012, county, state) %>% 
+  step_normalize(all_numeric_predictors()) 
+
+wkfl_log <- workflow() %>% 
+  add_model(mod_log) %>% 
+  add_recipe(rec_2)
+
+# Cross validating alphas and lambdas
+cv_log <- wkfl_log %>% 
+  tune_grid(
+    elec_cv,
+    grid = expand_grid(mixture = alphas, penalty = lambdas),
+    metrics = metric_set(accuracy)
+  )
+
+cv_log %>% show_best()
+
+# logistic_pred = predict(wkfl_log %>% fit(new_data = election), type = "response")
+
+
+
+# Find accuracy, precision, specificity, sensitivity, ROC AUC
+
+```
+
+## Logistic Lasso Regression
+
+```{r}
+# Use 5-fold cross validation to tune a logistic lasso regression model
+
+# Find accuracy, precision, specificity, sensitivity, ROC AUC
+```
+
+## Reflection
+
+
