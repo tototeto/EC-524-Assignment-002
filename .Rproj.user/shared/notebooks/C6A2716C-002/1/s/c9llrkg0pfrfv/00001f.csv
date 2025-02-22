@@ -1,45 +1,0 @@
-"0","mod_log <- logistic_reg("
-"0","  penalty = tune(),"
-"0","  mixture = tune()"
-"0",") %>% "
-"0","  set_engine(""glmnet"")"
-"0",""
-"0","# Recipe"
-"0","rec_2 <- recipe(data = election, i_republican_2016_f ~ .) %>% "
-"0","  update_role(fips, new_role = ""id"") %>% "
-"0","  step_novel(county, state) %>% "
-"0","  step_dummy(i_republican_2012, county, state) %>% "
-"0","  step_normalize(all_numeric_predictors()) "
-"0",""
-"0","wkfl_log <- workflow() %>% "
-"0","  add_model(mod_log) %>% "
-"0","  add_recipe(rec_2)"
-"0",""
-"0","# Cross validating alphas and lambdas"
-"0","cv_log <- wkfl_log %>% "
-"0","  tune_grid("
-"0","    elec_cv,"
-"0","    grid = expand_grid(mixture = alphas, penalty = lambdas),"
-"0","    metrics = metric_set(accuracy)"
-"0","  )"
-"2","→ [31m[1mA[22m[39m | [31merror[39m:   [38;5;250mNot all variables in the recipe are present in the supplied training set: `pct_r_votes`.[39m
-"
-"2","There were issues with some computations   [1m[31mA[39m[22m: x1"
-"2","There were issues with some computations   [1m[31mA[39m[22m: x2"
-"2","There were issues with some computations   [1m[31mA[39m[22m: x3"
-"2","There were issues with some computations   [1m[31mA[39m[22m: x4"
-"2","There were issues with some computations   [1m[31mA[39m[22m: x5"
-"2","There were issues with some computations   [1m[31mA[39m[22m: x5"
-"2","
-"
-"2","Warning: All models failed. Run `show_notes(.Last.tune.result)` for more information."
-"0","cv_log %>% show_best()"
-"2","Warning: [38;5;250mNo value of `metric` was given; [34m""accuracy""[38;5;250m will be used.[39m"
-"1","[1m[33mError[39m in `estimate_tune_results()`:[22m
-[33m![39m All models failed. Run `show_notes(.Last.tune.result)` for more information.
-Backtrace:
-[90m 1. [39mcv_log %>% show_best()
-[90m 3. [39m[1mtune[22m:::show_best.tune_results(.)
-[90m 4. [39mtune::.filter_perf_metrics(x, metric, eval_time)
-[90m 5. [39m[1m[94mtune::estimate_tune_results([39m[22mx[1m[94m)[39m[22m
-"

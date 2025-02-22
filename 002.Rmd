@@ -66,11 +66,12 @@ What I find interesting about this visualization is that the proportion of repub
 
 ```{r}
 # Plot population vs. pct of r votes
-election %<>% mutate(
+election_plot_df <- election %>% 
+  mutate(
   pct_r_votes = n_votes_republican_2012 / n_votes_total_2012
-)
+  )
 
-ggplot(data = election, aes(x = log(pop), y = log(pct_r_votes))) +
+ggplot(data = election_plot_df, aes(x = log(pop), y = log(pct_r_votes))) +
   geom_point()+
   geom_smooth(method='lm') +
   labs(
@@ -83,7 +84,7 @@ ggplot(data = election, aes(x = log(pop), y = log(pct_r_votes))) +
 
 This shows a weakly negative relationship between population and republican votes, suggesting more populous areas are more likely democratic-aligned. This is expected.
 
-##
+## 
 
 ## Penalized Regression
 
@@ -140,6 +141,7 @@ RMSE was the metric used. This is not a very fitting choice, as this is a classi
 mod_ent <- linear_reg( 
   penalty = tune(), mixture = tune()
 ) %>% 
+  set_mode("classification") %>% 
   set_engine(
     "glmnet"
   )
@@ -168,14 +170,16 @@ The algorithm tuned $\alpha$ to 1, indicating that a Lasso regression dominates 
 
 ## 
 
-##Logistic Regression
+## Logistic Regression
 
 ### Use 5-fold cross validation to tune a logistic regression model
+
 ```{r}
 mod_log <- logistic_reg(
   penalty = tune(),
   mixture = tune()
 ) %>% 
+  set_mode("classification") %>% 
   set_engine("glmnet")
 
 # Recipe
@@ -198,14 +202,19 @@ cv_log <- wkfl_log %>%
   )
 
 cv_log %>% show_best()
+cv_log %>% collect_metrics()
 
-# logistic_pred = predict(wkfl_log %>% fit(new_data = election), type = "response")
+#logistic_pred = predict(wkfl_log %>% fit(data = election), type = "response")
 
 
 
 # Find accuracy, precision, specificity, sensitivity, ROC AUC
 
 ```
+
+#### Highest Performing Lambda and Alpha:
+
+$$\lambda = 0.01,\text{   } \alpha = 0.1$$
 
 ## Logistic Lasso Regression
 
@@ -216,5 +225,3 @@ cv_log %>% show_best()
 ```
 
 ## Reflection
-
-
