@@ -1,0 +1,5 @@
+"0","election_log_df %<>% mutate("
+"0","  i_republican_2016_f = factor(i_republican_2016_f),"
+"0","  pred = as.numeric(pred)"
+"0",")"
+"0","roc_auc(election_log_df, i_republican_2016_f, pred)"

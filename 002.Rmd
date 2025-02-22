@@ -95,8 +95,9 @@ This shows a weakly negative relationship between population and republican vote
 # Recipe
 rec_1 <- recipe(data = election, i_republican_2016 ~ .) %>% 
   update_role(fips, new_role = "id") %>% 
+  step_rm(i_republican_2016_f) %>% 
   step_novel(county, state) %>% 
-  step_dummy(i_republican_2016_f, i_republican_2012, county, state) %>% 
+  step_dummy(i_republican_2012, county, state) %>% 
   step_normalize(all_numeric_predictors()) 
 
 # Model : Lasso
@@ -122,13 +123,12 @@ cv_lasso <- wkfl_lasso %>%
 
 cv_lasso %>% show_best()
 
-# Tune elasticnet prediction model
 
 ```
 
 #### Highest Performing Lambda:
 
-$$\lambda = 0.01$$
+$$\lambda = 0.0107$$
 
 #### Which metric was used?
 
@@ -141,7 +141,6 @@ RMSE was the metric used. This is not a very fitting choice, as this is a classi
 mod_ent <- linear_reg( 
   penalty = tune(), mixture = tune()
 ) %>% 
-  set_mode("classification") %>% 
   set_engine(
     "glmnet"
   )
@@ -164,9 +163,9 @@ cv_ent %>% show_best()
 
 #### Highest Performing Lambda and Alpha:
 
-$$\lambda = 0.01,\text{   } \alpha = 1.00$$
+$$\lambda = 0.0125,\text{   } \alpha = 0.85$$
 
-The algorithm tuned $\alpha$ to 1, indicating that a Lasso regression dominates Ridge in this setting.
+The algorithm tuned $\alpha$ to 0.85, indicating that a Lasso regression with a weak Ridge regression effect performs well with this data.
 
 ## 
 
@@ -182,8 +181,13 @@ mod_log <- logistic_reg(
   set_mode("classification") %>% 
   set_engine("glmnet")
 
+# Define data
+election_log_df <- election %>% 
+  select(-i_republican_2016)
+
 # Recipe
-rec_2 <- recipe(data = election, i_republican_2016_f ~ .) %>% 
+rec_2 <- recipe(data = election_log_df, i_republican_2016_f ~ .) %>% 
+  #step_select(-i_republican_2016) %>% 
   update_role(fips, new_role = "id") %>% 
   step_novel(county, state) %>% 
   step_dummy(i_republican_2012, county, state) %>% 
@@ -202,19 +206,43 @@ cv_log <- wkfl_log %>%
   )
 
 cv_log %>% show_best()
-cv_log %>% collect_metrics()
+# cv_log %>% collect_metrics()
 
-#logistic_pred = predict(wkfl_log %>% fit(data = election), type = "response")
+# Obtain Predictions
+log_fit <- wkfl_log %>% 
+  finalize_workflow(select_best(cv_log, metric = 'accuracy')) %>% 
+  fit(data = election_log_df)
 
+log_pred = predict(log_fit, new_data = election)
 
+election_log_df %<>% 
+  mutate(
+    pred = log_pred$.pred_class
+  )
 
 # Find accuracy, precision, specificity, sensitivity, ROC AUC
 
+accuracy(election_log_df, i_republican_2016_f, pred)
+sensitivity(election_log_df, i_republican_2016_f, pred)
+specificity(election_log_df, i_republican_2016_f, pred)
+election_log_df %<>% mutate(
+  i_republican_2016_f = factor(i_republican_2016_f),
+  pred = as.numeric(pred)
+)
+roc_auc(election_log_df, i_republican_2016_f, pred)
+
 ```
+
+### Outcome Statistics
+
+#### Confusion Matrix Statistics:
+
+$$\text{Accuracy} = 0.9688 \\ \text{Sensitivity} = 0.8801 \\ 
+\text{Specificity} = 0.9855 \\ \text{ROC AUC} = 0.0672$$
 
 #### Highest Performing Lambda and Alpha:
 
-$$\lambda = 0.01,\text{   } \alpha = 0.1$$
+$$\lambda = 0.0247,\text{   } \alpha = 0.45$$
 
 ## Logistic Lasso Regression
 

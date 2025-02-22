@@ -1,0 +1,4 @@
+"0","
+accuracy(election_log_df, i_republican_2016_f, pred)
+"
+"0","sensitivity(election_log_df, i_republican_2016_f, pred)"
