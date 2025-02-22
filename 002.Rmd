@@ -25,7 +25,7 @@ lambdas = 10^seq(from = 5, to = -2, length = 1e3)
 alphas = seq(from = 0, to = 1, by = 0.05)
 ```
 
-## Data Overview
+# Data Overview
 
 ### Create some nice plots of the raw data and brief discussion
 
@@ -59,7 +59,8 @@ ggplot(long_df, aes(x = state, y = Value, fill = Variable)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 8)) +
   scale_fill_manual(values = c("pct_r_counties" = "#25d", "pct_r_votes" = "#d46"),
-                    labels = c("Percentage of Republican Counties", "Percentage of Republican Votes"))
+                    labels = c("Percentage of Republican Counties", "Percentage of Republican Votes")) +
+  geom_hline(yintercept = mean(fig_1_df$pct_r_counties), linetype = "dotted", color = "#25d", )
 ```
 
 What I find interesting about this visualization is that the proportion of republican-majority counties is consistently larger than the proportion of republican votes, indicating that republican votes may be disproportionately represented. In other words, republicans seem to be winning more counties than they "should" given their voting population. Given the American democratic system, this is expected.
@@ -84,9 +85,9 @@ ggplot(data = election_plot_df, aes(x = log(pop), y = log(pct_r_votes))) +
 
 This shows a weakly negative relationship between population and republican votes, suggesting more populous areas are more likely democratic-aligned. This is expected.
 
-## 
+# 
 
-## Penalized Regression
+# Penalized Regression
 
 ### Using 5-fold cross validation, tune a Lasso model
 
@@ -132,7 +133,7 @@ $$\lambda = 0.0107$$
 
 #### Which metric was used?
 
-RMSE was the metric used. This is not a very fitting choice, as this is a classification regression. Instead, minimizing Gini or Entropy would be preferable.
+RMSE was the metric used. The error looks fairly high, at 0.205. This isn't great, as it would seem that even a null classifier would have a similar RMSE.
 
 ### Tune an Elasticnet model
 
@@ -167,11 +168,88 @@ $$\lambda = 0.0125,\text{   } \alpha = 0.85$$
 
 The algorithm tuned $\alpha$ to 0.85, indicating that a Lasso regression with a weak Ridge regression effect performs well with this data.
 
-## 
+# 
 
-## Logistic Regression
+# Logistic Regression
 
 ### Use 5-fold cross validation to tune a logistic regression model
+
+```{r}
+# I did logistic lasso first by mistake, this code is the simplified and repurposed code from the next section. That is why all unique objects have "0" in their names.
+
+mod_log0 <- logistic_reg(
+  penalty = 0.2 
+  # I think that just defining penalty arbitrarily is what makes it not logistic lasso..?
+) %>% 
+  set_mode("classification") %>% 
+  set_engine("glmnet")
+
+# Define data
+election_log_df0 <- election %>% 
+  select(-i_republican_2016)
+
+# Recipe
+rec_20 <- recipe(data = election_log_df0, i_republican_2016_f ~ .) %>% 
+  #step_select(-i_republican_2016) %>% 
+  update_role(fips, new_role = "id") %>% 
+  step_novel(county, state) %>% 
+  step_dummy(i_republican_2012, county, state) %>% 
+  step_normalize(all_numeric_predictors()) 
+
+wkfl_log0 <- workflow() %>% 
+  add_model(mod_log0) %>% 
+  add_recipe(rec_20)
+
+# # Cross validating alphas and lambdas
+# cv_log0 <- wkfl_log0 %>% 
+#   tune_grid(
+#     elec_cv,
+#     grid = expand_grid(mixture = alphas, penalty = lambdas),
+#     metrics = metric_set(accuracy)
+#   )
+
+# cv_log0 %>% show_best()
+# cv_log %>% collect_metrics()
+
+# Obtain Predictions
+log_fit0 <- wkfl_log0 %>% 
+#  finalize_workflow(select_best(cv_log0, metric = 'accuracy')) %>% 
+  fit(data = election_log_df0)
+
+log_pred0 = predict(log_fit0, new_data = election)
+
+election_log_df0 %<>% 
+  mutate(
+    pred = log_pred0$.pred_class
+  )
+
+# Find accuracy, precision, specificity, sensitivity, ROC AUC
+
+accuracy(election_log_df0, i_republican_2016_f, pred)
+sensitivity(election_log_df0, i_republican_2016_f, pred)
+specificity(election_log_df0, i_republican_2016_f, pred)
+election_log_df0 %<>% mutate(
+  i_republican_2016_f = factor(i_republican_2016_f),
+  pred = as.numeric(pred)
+)
+roc_auc(election_log_df0, i_republican_2016_f, pred)
+
+```
+
+### Outcome Statistics
+
+$$\text{Accuracy} = 0.8421 \\ \text{Sensitivity} = 0 \\ 
+\text{Specificity} = 1 \\ \text{ROC AUC} = 0.5$$
+
+### Discussion
+
+This accuracy is not great. As we saw in the first graph, about 73% of counties vote Republican. So even the null classifier would be right 73% of the time. This only improves upon that by about 10%, which is not much. The sensitivity was found to equal 0, which implies that the model is not getting any true positives. This implies that the model may just be guessing negative 100% of the time (though this is not likely actually the case, because accuracy is relatively better).
+
+# 
+
+# Logistic Lasso Regression
+
+### Use 5-fold cross validation to tune a logistic lasso regression model
 
 ```{r}
 mod_log <- logistic_reg(
@@ -230,7 +308,6 @@ election_log_df %<>% mutate(
   pred = as.numeric(pred)
 )
 roc_auc(election_log_df, i_republican_2016_f, pred)
-
 ```
 
 ### Outcome Statistics
@@ -244,12 +321,44 @@ $$\text{Accuracy} = 0.9688 \\ \text{Sensitivity} = 0.8801 \\
 
 $$\lambda = 0.0247,\text{   } \alpha = 0.45$$
 
-## Logistic Lasso Regression
+### Discussion
 
-```{r}
-# Use 5-fold cross validation to tune a logistic lasso regression model
+I think this accuracy is pretty good! Much closer to the ideal 100%. Sensitivity is now positive, and neither sensitivity nor specificity have taken integer values, implying that the model is actually guessing positive or negative with some consideration. I would be interested to see how this model translates to predicting ultimate electoral college outcomes. Logistic elasticnet would seem to provide the best results, as parameters can all be tuned optimally.
 
-# Find accuracy, precision, specificity, sensitivity, ROC AUC
-```
+# 
 
-## Reflection
+# Reflection
+
+#### Why might we prefer Lasso to elasticnet (or vice versa)?
+
+It seems that elasticnet likely dominates lasso in most settings, as it simply allows for an additional dimension of optimization through tuning more parameters.
+
+#### What are the the differences between logistic regression and linear regression? What are the similarities?
+
+Logistic regressions fit a logistic function rather than a line. This may be preferable in classification settings, as the logistic function can be manipulated to more closely approximate the step function. The step function which our logistic regression seeks to approximate gives a binary output, allowing for a model more suited to classification.
+
+#### Imagine you worked for a specific political party. In this setting do you care about accuracy, precision, sensitivity, or something else? Explain.
+
+Even working for a specific party, there is not much difference between a false positive and false negative (at least not in a scenario I can think of). Therefore accuracy is the optimal metric to measure the model's effectiveness at predicting election outcomes, regardless of party.
+
+#### Do you think that your estimated test accuracy will apply to the 2020 or 2024 (or future) presidential elections? Why or why not?
+
+Probably not. If the model could be trained on several election cycles over a larger number of years, then it would probably do a much better job predicting future elections. However, the provided training data only covers two cycles of election outcomes. The political landscape changes over 4 years, and without a larger history to inform a prediction about that change, the model is unlikely to apply to the future or past elections. Even a model trained on *every* election would likely struggle, as political attitudes have morphed rapidly in recent years.
+
+#### Does the standard "random sampling" approach to cross validation make sense with these data? If not: What approach could make more sense?
+
+You would probably want to choose your sample in such a way that each county's proportional representation is unchanged throughout the validation folds. So if "County A" has 100 people, 20 of those people will be assigned to each fold. This would ensure that counties are not randomly left out of some folds.
+
+#### Using *math* (not code): Derive what *R-squared* tells us when the outcome is binary and the prediction is also binary.
+
+$$R^2 = 1 - \frac{\sum_{i=1}^{n} (y_i - \hat{y}_i)^2}{\sum_{i=1}^{n} (y_i - \bar{y})^2}$$
+
+If the data is unbalanced (meaning more T than F, or vice versa), then the denominator will be smaller, increasing $R^2$ . So for an application like this, where most counties are republican, $R^2$ will be higher than it would be with an equivalent model trained on balanced data.
+
+#### Similarly, derive what *R-squared* tells us when the outcome is binary and the prediction is a probability.
+
+If the prediction is a probability then the numerator will be larger as erroneous guesses will be closer to the correct value. This will increase $R^2$ compared to when the prediction is binary.
+
+#### What is the most interesting concept you've learned in this class? Why do you find it interesting/important?
+
+I am really enjoying learning about these models and using them for prediction. I feel (perhaps overzealously) that I can predict anything, given the right data. I am already using skills from this class in other research endeavors as I am learning them, which is really igniting my passion as I continue my academic career. **10/10 class**.
