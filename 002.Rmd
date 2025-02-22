@@ -166,7 +166,7 @@ cv_ent %>% show_best()
 
 $$\lambda = 0.0125,\text{   } \alpha = 0.85$$
 
-The algorithm tuned $\alpha$ to 0.85, indicating that a Lasso regression with a weak Ridge regression effect performs well with this data.
+The algorithm tuned $\alpha$ to 0.85, indicating that a Lasso regression with a weak Ridge regression effect performs well with this data. (Note that some values returned in the knit document may not exactly align with what I wrote. I cannot figure out why the values change in knitting.)
 
 # 
 
@@ -174,7 +174,7 @@ The algorithm tuned $\alpha$ to 0.85, indicating that a Lasso regression with a 
 
 ### Use 5-fold cross validation to tune a logistic regression model
 
-```{r}
+```{r warning=FALSE}
 # I did logistic lasso first by mistake, this code is the simplified and repurposed code from the next section. That is why all unique objects have "0" in their names.
 
 mod_log0 <- logistic_reg(
@@ -238,8 +238,10 @@ roc_auc(election_log_df0, i_republican_2016_f, pred)
 
 ### Outcome Statistics
 
-$$\text{Accuracy} = 0.8421 \\ \text{Sensitivity} = 0 \\ 
-\text{Specificity} = 1 \\ \text{ROC AUC} = 0.5$$
+$$\text{Accuracy} = 0.8421 $$
+$$\text{Sensitivity} = 0 $$
+$$\text{Specificity} = 1 $$
+$$\text{ROC AUC} = 0.5$$
 
 ### Discussion
 
@@ -251,7 +253,7 @@ This accuracy is not great. As we saw in the first graph, about 73% of counties 
 
 ### Use 5-fold cross validation to tune a logistic lasso regression model
 
-```{r}
+```{r warning=FALSE}
 mod_log <- logistic_reg(
   penalty = tune(),
   mixture = tune()
@@ -314,8 +316,10 @@ roc_auc(election_log_df, i_republican_2016_f, pred)
 
 #### Confusion Matrix Statistics:
 
-$$\text{Accuracy} = 0.9688 \\ \text{Sensitivity} = 0.8801 \\ 
-\text{Specificity} = 0.9855 \\ \text{ROC AUC} = 0.0672$$
+$$\text{Accuracy} = 0.9688 $$
+$$\text{Sensitivity} = 0.8801 $$
+$$\text{Specificity} = 0.9855 $$
+$$\text{ROC AUC} = 0.0672$$
 
 #### Highest Performing Lambda and Alpha:
 
